@@ -6085,6 +6085,7 @@ ivopts_estimate_reg_pressure (struct ivopts_data *data, unsigned n_invs,
   unsigned cost;
   unsigned n_old = data->regs_used, n_new = n_invs + n_cands;
   unsigned regs_needed = n_new + n_old, available_regs = target_avail_regs;
+  unsigned iv_spill_cost = 0;
   bool speed = data->speed;
 
   /* If there is a call in the loop body, the call-clobbered registers
@@ -6094,7 +6095,7 @@ ivopts_estimate_reg_pressure (struct ivopts_data *data, unsigned n_invs,
 
   /* If we have enough registers.  */
   if (regs_needed + target_res_regs < available_regs)
-    cost = n_new;
+    cost = 0;
   /* If close to running out of registers, try to preserve them.  */
   else if (regs_needed <= available_regs)
     cost = target_reg_cost [speed] * regs_needed;
@@ -6103,17 +6104,19 @@ ivopts_estimate_reg_pressure (struct ivopts_data *data, unsigned n_invs,
   else if (n_cands <= available_regs)
     cost = target_reg_cost [speed] * available_regs
 	   + target_spill_cost [speed] * (regs_needed - available_regs);
-  /* If the number of candidates runs out available registers, we penalize
-     extra candidate registers using target_spill_cost * 2.  Because it is
-     more expensive to spill induction variable than invariant.  */
+  /* If the number of candidates runs out available registers,
+	 save the spill cost as separate variable iv_spill_cost. */
   else
-    cost = target_reg_cost [speed] * available_regs
-	   + target_spill_cost [speed] * (n_cands - available_regs) * 2
-	   + target_spill_cost [speed] * (regs_needed - n_cands);
+    {
+	  cost = target_reg_cost [speed] * available_regs
+		  + target_spill_cost [speed] * (regs_needed - n_cands);
+	  iv_spill_cost = target_spill_cost[speed] *
+		  (n_cands - available_regs);
+    }
 
-  /* Finally, add the number of candidates, so that we prefer eliminating
-     induction variables if possible.  */
-  return cost + n_cands;
+  /* Adjust cost of invariant register pressure in order to make
+     the spilling of induction variables the most taxing. */
+  return adjust_setup_cost(data, cost) + iv_spill_cost;
 }
 
 /* For each size of the induction variable set determine the penalty.  */
